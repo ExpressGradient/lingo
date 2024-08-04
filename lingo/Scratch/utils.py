@@ -14,7 +14,9 @@ def token_ids_to_text(token_ids, tokenizer):
     return tokenizer.decode(flat.tolist())
 
 
-def generate_text(model, input_ids, max_tokens, context_length):
+def generate_text(
+    model, input_ids, max_tokens, context_length, temperature=0.0, top_k=None
+):
     for _ in range(max_tokens):
         context = input_ids[:, -context_length:]
 
@@ -23,7 +25,21 @@ def generate_text(model, input_ids, max_tokens, context_length):
 
         logits = logits[:, -1, :]
 
-        next_token_index = torch.argmax(logits, dim=-1, keepdim=True)
+        if top_k is not None:
+            top_logits, _ = torch.topk(logits, top_k)
+            min_value = top_logits[:, -1]
+            logits = torch.where(
+                logits < min_value,
+                torch.tensor(float("-inf")).to(logits.device),
+                logits,
+            )
+
+        if temperature > 0.0:
+            logits = logits / temperature
+            probabilities = torch.softmax(logits, dim=-1)
+            next_token_index = torch.multinomial(probabilities, num_samples=1)
+        else:
+            next_token_index = torch.argmax(logits, dim=-1, keepdim=True)
 
         input_ids = torch.cat((input_ids, next_token_index), dim=1)
 
