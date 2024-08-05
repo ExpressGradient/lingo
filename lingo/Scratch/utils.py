@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 
 
 def text_to_token_ids(text, tokenizer):
@@ -44,3 +45,37 @@ def generate_text(
         input_ids = torch.cat((input_ids, next_token_index), dim=1)
 
     return input_ids
+
+
+def compute_batch_loss(input_batch, target_batch, model):
+    input_batch, target_batch = input_batch.to("cuda"), target_batch.to("cuda")
+    logits = model(input_batch)
+    loss = F.cross_entropy(logits.flatten(0, 1), target_batch.flatten())
+
+    return loss
+
+
+def compute_loader_loss(loader, model, num_batches):
+    total_loss = 0.0
+    num_batches = min(num_batches, len(loader))
+
+    for i, (input_batch, target_batch) in enumerate(loader):
+        if i < num_batches:
+            loss = compute_batch_loss(input_batch, target_batch, model)
+            total_loss += loss.item()
+        else:
+            break
+
+    return total_loss / num_batches
+
+
+def evaluate_model(train_loader, valid_loader, model, eval_iter):
+    model.eval()
+
+    with torch.no_grad():
+        train_loss = compute_loader_loss(train_loader, model, eval_iter)
+        valid_loss = compute_loader_loss(valid_loader, model, eval_iter)
+
+    model.train()
+
+    return train_loss, valid_loss
